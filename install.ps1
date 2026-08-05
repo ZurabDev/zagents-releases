@@ -1,9 +1,9 @@
-# Multica installer for Windows — one command to get started.
+# ZAgents installer for Windows — one command to get started. # mz: zagents-rebrand
 #
 # Install CLI (default): connects to zagents.cnt.me  # mz: zagents-rebrand
 #   irm https://raw.githubusercontent.com/ZurabDev/zagents-releases/main/install.ps1 | iex
 #
-# Self-host: starts a local Multica server + installs CLI + configures
+# Self-host: starts a local ZAgents server + installs CLI + configures
 #   $env:ZAGENTS_MODE="local"; irm https://raw.githubusercontent.com/ZurabDev/zagents-releases/main/install.ps1 | iex
 #
 
@@ -240,10 +240,10 @@ function Get-InstalledCliVersion {
 # CLI Installation
 # ---------------------------------------------------------------------------
 function Install-CliBinary {
-    Write-Info "Installing Multica CLI from GitHub Releases..."
+    Write-Info "Installing ZAgents CLI from GitHub Releases..."
 
     if (-not [Environment]::Is64BitOperatingSystem) {
-        Write-Fail "Multica requires a 64-bit Windows installation."
+        Write-Fail "ZAgents requires a 64-bit Windows installation."
     }
 
     $arch = Get-WindowsCliArch
@@ -334,7 +334,7 @@ function Install-CliBinary {
     Remove-Item $tmpDir -Recurse -Force
 
     Add-ToUserPath $binDir
-    Write-Ok "Multica CLI installed to $binDir\zagents.exe"
+    Write-Ok "ZAgents CLI installed to $binDir\zagents.exe"
 }
 
 function Add-ToUserPath {
@@ -370,15 +370,15 @@ function Install-Cli {
         }
 
         if ($isUpToDate) {
-            Write-Ok "Multica CLI is up to date ($currentVer)"
+            Write-Ok "ZAgents CLI is up to date ($currentVer)"
             return
         }
 
-        Write-Info "Multica CLI $currentVer installed, latest is $latestVer - upgrading..."
+        Write-Info "ZAgents CLI $currentVer installed, latest is $latestVer - upgrading..."
         Install-CliBinary
 
         $newVer = Get-InstalledCliVersion
-        Write-Ok "Multica CLI upgraded ($currentVer -> $newVer)"
+        Write-Ok "ZAgents CLI upgraded ($currentVer -> $newVer)"
         return
     }
 
@@ -395,7 +395,7 @@ function Install-Cli {
 function Test-Docker {
     if (-not (Test-CommandExists "docker")) {
         Write-Fail @"
-Docker is not installed. Multica self-hosting requires Docker and Docker Compose.
+Docker is not installed. ZAgents self-hosting requires Docker and Docker Compose.
 
 Install Docker Desktop for Windows:
   https://docs.docker.com/desktop/install/windows-install/
@@ -417,7 +417,7 @@ After installing Docker, re-run this script with `$env:ZAGENTS_MODE="local"`.
 # Server setup (self-host / local)
 # ---------------------------------------------------------------------------
 function Install-Server {
-    Write-Info "Setting up Multica server..."
+    Write-Info "Setting up ZAgents server..."
     $serverRef = Get-SelfHostRef
     Write-Info "Using self-host assets from $serverRef..."
 
@@ -425,7 +425,7 @@ function Install-Server {
         Write-Info "Updating existing installation at $InstallDir..."
         Write-Warn "Any local changes in $InstallDir will be overwritten."
     } else {
-        Write-Info "Cloning Multica repository..."
+        Write-Info "Cloning ZAgents repository..."
         if (-not (Test-CommandExists "git")) {
             Write-Fail "Git is not installed. Please install git and re-run."
         }
@@ -459,9 +459,9 @@ function Install-Server {
         Write-Ok "Using existing .env"
     }
 
-    Write-Info "Pulling official Multica images..."
+    Write-Info "Pulling official ZAgents images..."
     Pull-OfficialSelfHostImages
-    Write-Info "Starting Multica services (this may take a few minutes on first run)..."
+    Write-Info "Starting ZAgents services (this may take a few minutes on first run)..."
     docker compose -f docker-compose.selfhost.yml up -d
 
     # Read the ports Compose actually published, once, and reuse them for both
@@ -488,7 +488,7 @@ function Install-Server {
     }
 
     if ($ready) {
-        Write-Ok "Multica server is running"
+        Write-Ok "ZAgents server is running"
     } else {
         Write-Warn "Server is still starting. Check logs with:"
         Write-Host "  cd $InstallDir; docker compose -f docker-compose.selfhost.yml logs"
@@ -503,14 +503,14 @@ function Install-Server {
 # ---------------------------------------------------------------------------
 function Start-DefaultInstall {
     Write-Host ""
-    Write-Host "  Multica - Installer" -ForegroundColor White
+    Write-Host "  ZAgents - Installer" -ForegroundColor White
     Write-Host ""
 
     Install-Cli
 
     Write-Host ""
     Write-Host "  ============================================" -ForegroundColor Green
-    Write-Host "  [OK] Multica CLI is ready!" -ForegroundColor Green
+    Write-Host "  [OK] ZAgents CLI is ready!" -ForegroundColor Green
     Write-Host "  ============================================" -ForegroundColor Green
     Write-Host ""
     Write-Host "  Next: configure your environment"
@@ -528,7 +528,7 @@ function Start-DefaultInstall {
 # ---------------------------------------------------------------------------
 function Start-LocalInstall {
     Write-Host ""
-    Write-Host "  Multica - Self-Host Installer" -ForegroundColor White
+    Write-Host "  ZAgents - Self-Host Installer" -ForegroundColor White
     Write-Host "  Provisioning server infrastructure + installing CLI"
     Write-Host ""
 
@@ -538,7 +538,7 @@ function Start-LocalInstall {
 
     Write-Host ""
     Write-Host "  ============================================" -ForegroundColor Green
-    Write-Host "  [OK] Multica server is running and CLI is ready!" -ForegroundColor Green
+    Write-Host "  [OK] ZAgents server is running and CLI is ready!" -ForegroundColor Green
     Write-Host "  ============================================" -ForegroundColor Green
     Write-Host ""
     Write-Host "  Frontend:  http://localhost:$($script:SelfHostFrontendPort)"
@@ -562,7 +562,7 @@ function Start-LocalInstall {
 # ---------------------------------------------------------------------------
 function Start-Stop {
     Write-Host ""
-    Write-Info "Stopping Multica services..."
+    Write-Info "Stopping ZAgents services..."
 
     if (Test-Path $InstallDir) {
         Push-Location $InstallDir
@@ -574,7 +574,7 @@ function Start-Stop {
         }
         Pop-Location
     } else {
-        Write-Warn "No Multica installation found at $InstallDir"
+        Write-Warn "No ZAgents installation found at $InstallDir"
     }
 
     if (Test-CommandExists "zagents") {
