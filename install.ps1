@@ -308,10 +308,10 @@ function Install-CliBinary {
             }
             Write-Ok "Checksum verified"
         } else {
-            Write-Warn "Could not find checksum entry for $releaseAsset — skipping verification."
+            Write-Warn "Could not find checksum entry for $releaseAsset - skipping verification."
         }
     } catch {
-        Write-Warn "Could not download checksums.txt — skipping verification."
+        Write-Warn "Could not download checksums.txt - skipping verification."
     }
 
     Expand-Archive -Path (Join-Path $tmpDir "zagents.zip") -DestinationPath $tmpDir -Force
