@@ -38,9 +38,15 @@ The step fails (exit 1) when a test of the `fail-on` gate fails. The default for
 | `server-url` | `https://zagents.cnt.me` | |
 | `workspace-id` | | set it when the token is not bound to one workspace |
 | `cli-version` | latest | e.g. `0.7.0-mz.1` |
-| `args` | | extra `zagents spec test run` flags (`--include-unapproved --require-tests`) |
+| `upload-junit` | `false` | `true` uploads the JUnit files as a workflow artifact (`junit-dir`, or a temporary directory) |
+| `artifact-name` | `zagents-spec-tests-junit` | name of that artifact |
+| `args` | | extra `zagents spec test run` flags, shell-quoted (`--include-unapproved --tag 'smoke test'`); an unbalanced quote fails the step |
 
-The outputs are `exit-code` and `result-file` (the JSON written by `--output json`).
+The outputs are `exit-code`, `result-file` (the JSON written by `--output json`), `passed`, `failed` and `junit-dir`. Every failed test is annotated on the run page with its path and reason.
+
+Useful `args`: `--changed-since <base-sha>` runs only the tests a PR touches (plus every deploy test; check out with `fetch-depth: 0`), `--deployment production` records the deploy gate outcome on the specs. `scripts/spec-kit-verify-protection.sh --repo OWNER/REPO --check <job>` (published next to `spec-kit-test.sh`) tells you whether the job is a required status check.
+
+The CLI is installed from the release and is never run unverified: a missing `checksums.txt`, a missing entry or a mismatch stops the step (exit 2).
 
 ## PR workflow
 
@@ -139,7 +145,7 @@ The plan comes from ZAgents (`zagents spec test plan --project … --gate …` s
    - playwright for `e2e/**`
    - pytest for `test_*.py`
 
-Results are read from JUnit XML or `go test -json`. A test the report does not mention gets the exit code of its batch. Reports sent from CI are marked `via: ci`, and each one carries the commit and a link to the job.
+Results are read from JUnit XML or `go test -json`. A test whose file is missing in the checkout, or that the report does not mention (a mistyped run name, a removed test), fails; so do the tests of a batch whose runner says it found no tests. Only a batch that writes no per-test report at all is mapped by its exit code (`--fallback-exit-code` in `args` restores the exit-code mapping for unmentioned tests). Reports sent from CI are marked `via: ci`, and each one carries the commit and a link to the job.
 
 ## Versioning
 

@@ -54,6 +54,14 @@ inputs:
     description: Keep JUnit files in this directory (for artifacts).
     required: false
     default: ""
+  upload-junit:
+    description: "Upload the JUnit files as a workflow artifact (true/false); uses junit-dir or a temporary directory."
+    required: false
+    default: "false"
+  artifact-name:
+    description: Name of the JUnit artifact.
+    required: false
+    default: zagents-spec-tests-junit
   server-url:
     description: ZAgents server URL.
     required: false
@@ -67,7 +75,7 @@ inputs:
     required: false
     default: ""
   args:
-    description: Extra flags for `zagents spec test run` (e.g. --include-unapproved --require-tests).
+    description: "Extra flags for `zagents spec test run`, shell-quoted (e.g. --include-unapproved --tag 'smoke test'); one flag per line also works."
     required: false
     default: ""
 
@@ -78,6 +86,15 @@ outputs:
   result-file:
     description: Path of the JSON result (`--output json`).
     value: ${{ steps.run.outputs.result-file }}
+  passed:
+    description: Number of passed spec tests.
+    value: ${{ steps.run.outputs.passed }}
+  failed:
+    description: Number of failed spec tests.
+    value: ${{ steps.run.outputs.failed }}
+  junit-dir:
+    description: Directory with the JUnit files of the run.
+    value: ${{ steps.run.outputs.junit-dir }}
 
 runs:
   using: composite
@@ -99,6 +116,7 @@ runs:
         IN_FAIL_ON: ${{ inputs.fail-on }}
         IN_PARALLEL: ${{ inputs.parallel }}
         IN_JUNIT_DIR: ${{ inputs.junit-dir }}
+        IN_UPLOAD: ${{ inputs.upload-junit }}
         IN_ARGS: ${{ inputs.args }}
       run: |
         set -uo pipefail
@@ -110,20 +128,47 @@ runs:
         [ -n "$IN_SPEC" ] && args+=(--spec "$IN_SPEC")
         [ -n "$IN_ISSUE" ] && args+=(--issue "$IN_ISSUE")
         [ -n "$IN_FAIL_ON" ] && args+=(--fail-on "$IN_FAIL_ON")
-        [ -n "$IN_JUNIT_DIR" ] && args+=(--junit-dir "$IN_JUNIT_DIR")
+        junit_dir="$IN_JUNIT_DIR"
+        if [ -z "$junit_dir" ] && [ "$IN_UPLOAD" = "true" ]; then
+          junit_dir="$RUNNER_TEMP/zagents-spec-tests-junit"
+        fi
+        [ -n "$junit_dir" ] && args+=(--junit-dir "$junit_dir")
+        # Tags: comma or newline separated; trimmed without xargs so quotes survive.
         while IFS= read -r tag; do
-          tag="$(echo "$tag" | xargs)"
+          tag="${tag#"${tag%%[![:space:]]*}"}"
+          tag="${tag%"${tag##*[![:space:]]}"}"
           [ -n "$tag" ] && args+=(--tag "$tag")
         done < <(printf '%s\n' "$IN_TAGS" | tr ',' '\n')
+        # Extra args: shell-style quoting ('a b', "a b", a\ b) without eval;
+        # an unbalanced quote fails the step instead of splitting silently.
         if [ -n "$IN_ARGS" ]; then
-          read -r -a extra <<< "$IN_ARGS"
-          args+=("${extra[@]}")
+          extra_file="$RUNNER_TEMP/zagents-spec-args"
+          if ! printf '%s\n' "$IN_ARGS" | xargs printf '%s\0' > "$extra_file"; then
+            echo "::error::args: unbalanced quotes"
+            exit 2
+          fi
+          while IFS= read -r -d '' a; do [ -n "$a" ] && args+=("$a"); done < "$extra_file"
         fi
         result="$RUNNER_TEMP/zagents-spec-tests.json"
-        bash "$script" "${args[@]}" > "$result"
-        code=$?
-        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
-        echo "result-file=$result" >> "$GITHUB_OUTPUT"
+        # The step shell runs with -e: keep the exit code instead of aborting
+        # before the outputs, the summary and the JUnit upload.
+        code=0
+        bash "$script" "${args[@]}" > "$result" || code=$?
+        passed=0
+        failed=0
+        if command -v jq >/dev/null 2>&1 && jq -e . "$result" >/dev/null 2>&1; then
+          passed=$(jq '[(.results // [])[] | select(.status == "pass")] | length' "$result")
+          failed=$(jq '[(.results // [])[] | select(.status == "fail")] | length' "$result")
+          # Annotate every failed test (path + reason) on the run page.
+          jq -r '(.results // [])[] | select(.status == "fail") | "::error file=\(.path // "")::\(.ref) (\(.source)): \((.actual // "failed") | split("\n")[0])"' "$result" || true
+        fi
+        {
+          echo "exit-code=$code"
+          echo "result-file=$result"
+          echo "passed=$passed"
+          echo "failed=$failed"
+          echo "junit-dir=$junit_dir"
+        } >> "$GITHUB_OUTPUT"
         {
           echo "### ZAgents spec tests (gate: ${IN_GATE})"
           echo
@@ -144,3 +189,11 @@ runs:
         } >> "$GITHUB_STEP_SUMMARY"
         cat "$result"
         exit "$code"
+
+    - name: Upload JUnit files
+      if: ${{ always() && inputs.upload-junit == 'true' && steps.run.outputs.junit-dir != '' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ steps.run.outputs.junit-dir }}
+        if-no-files-found: warn

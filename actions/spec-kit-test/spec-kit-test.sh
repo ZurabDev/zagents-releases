@@ -15,9 +15,11 @@ RELEASES_URL="${ZAGENTS_RELEASES_URL:-https://github.com/ZurabDev/zagents-releas
 usage() {
   cat <<'EOF'
 Usage: spec-kit-test.sh [zagents spec test run flags...]
+       spec-kit-test.sh drift --since <sha> [zagents spec drift flags...]
 
 Runs `zagents spec test run` in the current checkout and reports the results
-to ZAgents. Installs the zagents CLI first when it is not on PATH.
+to ZAgents. Installs the zagents CLI first when it is not on PATH. With
+"drift" first it runs `zagents spec drift` instead (read only).
 
 Environment:
   ZAGENTS_TOKEN         Workspace API token (required; a CI secret)
@@ -71,7 +73,7 @@ install_cli() {
   local version="${ZAGENTS_CLI_VERSION:-}"
   if [ -z "$version" ]; then
     local tag
-    tag=$(curl -fsSI "$RELEASES_URL/releases/latest" 2>/dev/null | grep -i '^location:' | sed 's/.*tag\///' | tr -d '\r\n' || true)
+    tag=$(curl -fsSI --retry 3 --retry-delay 2 "$RELEASES_URL/releases/latest" 2>/dev/null | grep -i '^location:' | sed 's/.*tag\///' | tr -d '\r\n' || true)
     [ -n "$tag" ] || die "could not determine the latest zagents release from $RELEASES_URL"
     version="${tag#v}"
   fi
@@ -82,19 +84,19 @@ install_cli() {
   local tmp
   tmp=$(mktemp -d)
   log "Installing zagents ${version} (${OS}/${ARCH}) into ${bin_dir}"
-  curl -fsSL "$base/$asset" -o "$tmp/$asset" || die "download failed: $base/$asset"
-  if curl -fsSL "$base/checksums.txt" -o "$tmp/checksums.txt" 2>/dev/null; then
-    local want got
-    want=$(grep " ${asset}\$" "$tmp/checksums.txt" | awk '{print $1}' || true)
-    if [ -n "$want" ]; then
-      if command -v sha256sum >/dev/null 2>&1; then
-        got=$(sha256sum "$tmp/$asset" | awk '{print $1}')
-      else
-        got=$(shasum -a 256 "$tmp/$asset" | awk '{print $1}')
-      fi
-      [ "$want" = "$got" ] || die "checksum mismatch for $asset"
-    fi
+  curl -fsSL --retry 3 --retry-delay 2 "$base/$asset" -o "$tmp/$asset" || die "download failed: $base/$asset"
+  # Fail closed: no checksums.txt or no line for the asset means no install.
+  curl -fsSL --retry 3 --retry-delay 2 "$base/checksums.txt" -o "$tmp/checksums.txt" ||
+    die "download failed: $base/checksums.txt (refusing to install an unverified CLI)"
+  local want got
+  want=$(awk -v a="$asset" '$2 == a || $2 == "*" a {print $1}' "$tmp/checksums.txt")
+  [ -n "$want" ] || die "checksums.txt has no entry for $asset (refusing to install an unverified CLI)"
+  if command -v sha256sum >/dev/null 2>&1; then
+    got=$(sha256sum "$tmp/$asset" | awk '{print $1}')
+  else
+    got=$(shasum -a 256 "$tmp/$asset" | awk '{print $1}')
   fi
+  [ "$want" = "$got" ] || die "checksum mismatch for $asset"
   tar -xzf "$tmp/$asset" -C "$tmp" zagents
   mkdir -p "$bin_dir"
   mv "$tmp/zagents" "$bin_dir/zagents"
@@ -120,7 +122,12 @@ fi
 
 log "$("$CLI" version 2>/dev/null | head -n 1 || echo zagents) → ${ZAGENTS_SERVER_URL}"
 set +e
-"$CLI" spec test run "$@"
+if [ "${1:-}" = drift ]; then
+  shift
+  "$CLI" spec drift "$@"
+else
+  "$CLI" spec test run "$@"
+fi
 code=$?
 set -e
 exit "$code"
