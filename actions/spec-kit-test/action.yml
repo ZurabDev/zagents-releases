@@ -1,0 +1,146 @@
+# mz: spec-kit — composite action: run ZAgents Executable Spec Kit tests on the
+# caller's checkout and report results. Published to the public
+# ZurabDev/zagents-releases repo at actions/spec-kit-test/ by the
+# sync-public-repo job (release-fork.yml); used as
+#   uses: ZurabDev/zagents-releases/actions/spec-kit-test@v1
+name: ZAgents Spec Kit tests
+description: Run the spec tests of a ZAgents project (deploy / PR / nightly gate) in this checkout and report results to ZAgents.
+author: ZAgents
+branding:
+  icon: check-square
+  color: purple
+
+inputs:
+  token:
+    description: Workspace API token (store as the ZAGENTS_TOKEN secret).
+    required: true
+  gate:
+    description: "Gate: deploy, pr, nightly, manual or all."
+    required: false
+    default: pr
+  project:
+    description: Project id, key or title.
+    required: false
+    default: ""
+  component:
+    description: Component <domain>.<component>.
+    required: false
+    default: ""
+  spec:
+    description: Spec ref (SPEC-014).
+    required: false
+    default: ""
+  issue:
+    description: Issue key (PRC-100).
+    required: false
+    default: ""
+  tags:
+    description: Tags, comma or newline separated (any of).
+    required: false
+    default: ""
+  fail-on:
+    description: "Fail the step when a test of this gate fails: deploy, pr or any (default: from gate)."
+    required: false
+    default: ""
+  parallel:
+    description: Batches to run at the same time.
+    required: false
+    default: "1"
+  working-directory:
+    description: Checkout root the tests run in.
+    required: false
+    default: "."
+  junit-dir:
+    description: Keep JUnit files in this directory (for artifacts).
+    required: false
+    default: ""
+  server-url:
+    description: ZAgents server URL.
+    required: false
+    default: https://zagents.cnt.me
+  workspace-id:
+    description: Workspace id, when the token is not bound to one.
+    required: false
+    default: ""
+  cli-version:
+    description: zagents CLI version to install (default latest).
+    required: false
+    default: ""
+  args:
+    description: Extra flags for `zagents spec test run` (e.g. --include-unapproved --require-tests).
+    required: false
+    default: ""
+
+outputs:
+  exit-code:
+    description: Exit code of `zagents spec test run`.
+    value: ${{ steps.run.outputs.exit-code }}
+  result-file:
+    description: Path of the JSON result (`--output json`).
+    value: ${{ steps.run.outputs.result-file }}
+
+runs:
+  using: composite
+  steps:
+    - id: run
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ZAGENTS_TOKEN: ${{ inputs.token }}
+        ZAGENTS_SERVER_URL: ${{ inputs.server-url }}
+        ZAGENTS_WORKSPACE_ID: ${{ inputs.workspace-id }}
+        ZAGENTS_CLI_VERSION: ${{ inputs.cli-version }}
+        IN_GATE: ${{ inputs.gate }}
+        IN_PROJECT: ${{ inputs.project }}
+        IN_COMPONENT: ${{ inputs.component }}
+        IN_SPEC: ${{ inputs.spec }}
+        IN_ISSUE: ${{ inputs.issue }}
+        IN_TAGS: ${{ inputs.tags }}
+        IN_FAIL_ON: ${{ inputs.fail-on }}
+        IN_PARALLEL: ${{ inputs.parallel }}
+        IN_JUNIT_DIR: ${{ inputs.junit-dir }}
+        IN_ARGS: ${{ inputs.args }}
+      run: |
+        set -uo pipefail
+        script="$GITHUB_ACTION_PATH/spec-kit-test.sh"
+        [ -f "$script" ] || script="$GITHUB_ACTION_PATH/../../../scripts/spec-kit-test.sh"
+        args=(--gate "$IN_GATE" --parallel "$IN_PARALLEL" --output json)
+        [ -n "$IN_PROJECT" ] && args+=(--project "$IN_PROJECT")
+        [ -n "$IN_COMPONENT" ] && args+=(--component "$IN_COMPONENT")
+        [ -n "$IN_SPEC" ] && args+=(--spec "$IN_SPEC")
+        [ -n "$IN_ISSUE" ] && args+=(--issue "$IN_ISSUE")
+        [ -n "$IN_FAIL_ON" ] && args+=(--fail-on "$IN_FAIL_ON")
+        [ -n "$IN_JUNIT_DIR" ] && args+=(--junit-dir "$IN_JUNIT_DIR")
+        while IFS= read -r tag; do
+          tag="$(echo "$tag" | xargs)"
+          [ -n "$tag" ] && args+=(--tag "$tag")
+        done < <(printf '%s\n' "$IN_TAGS" | tr ',' '\n')
+        if [ -n "$IN_ARGS" ]; then
+          read -r -a extra <<< "$IN_ARGS"
+          args+=("${extra[@]}")
+        fi
+        result="$RUNNER_TEMP/zagents-spec-tests.json"
+        bash "$script" "${args[@]}" > "$result"
+        code=$?
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        echo "result-file=$result" >> "$GITHUB_OUTPUT"
+        {
+          echo "### ZAgents spec tests (gate: ${IN_GATE})"
+          echo
+          if command -v jq >/dev/null 2>&1 && jq -e . "$result" >/dev/null 2>&1; then
+            jq -r '
+              "| Test | Status | Duration | Gate | Path |",
+              "|---|---|---|---|---|",
+              ((.results // [])[] | "| \(.ref) | \(if .status == "fail" then "❌ fail" elif .status == "pass" then "✅ pass" else "➖ none" end) | \(if .duration_ms then "\(.duration_ms)ms" else "-" end) | \(.gate // "-") | `\(.path // "-")` |"),
+              "",
+              "\((.results // []) | map(select(.status == "pass")) | length) passed, \((.results // []) | map(select(.status == "fail")) | length) failed, \((.unmatched // []) | length) without a run command."' "$result"
+          else
+            echo '```'
+            cat "$result"
+            echo '```'
+          fi
+          echo
+          echo "Exit code: \`$code\`"
+        } >> "$GITHUB_STEP_SUMMARY"
+        cat "$result"
+        exit "$code"
