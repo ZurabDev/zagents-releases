@@ -1,10 +1,15 @@
 # mz: spec-kit — composite action: run ZAgents Executable Spec Kit tests on the
 # caller's checkout and report results. Published to the public
-# ZurabDev/zagents-releases repo at actions/spec-kit-test/ by the
+# cnt-ai-corp/zagents-releases repo at actions/spec-kit-test/ by the
 # sync-public-repo job (release-fork.yml); used as
-#   uses: ZurabDev/zagents-releases/actions/spec-kit-test@v1
+#   uses: cnt-ai-corp/zagents-releases/actions/spec-kit-test@v1
+#
+# Branch and PR context (repository, branch, PR, base/default branch, event,
+# workflow, job, attempt, runner, actor) is detected by the CLI from the
+# GitHub env and event payload: nothing to pass. Results of a PR or a
+# feature branch never change the default-branch state of the tests.
 name: ZAgents Spec Kit tests
-description: Run the spec tests of a ZAgents project (deploy / PR / nightly gate) in this checkout and report results to ZAgents.
+description: Run the spec tests of a ZAgents project (PR / deploy / predeploy / nightly gate) in this checkout and report results to ZAgents.
 author: ZAgents
 branding:
   icon: check-square
@@ -15,7 +20,7 @@ inputs:
     description: Workspace API token (store as the ZAGENTS_TOKEN secret).
     required: true
   gate:
-    description: "Gate: deploy, pr, nightly, manual or all."
+    description: "Run context: pr (deploy+pr tests), deploy (deploy+predeploy), predeploy, nightly (all but manual), manual or all."
     required: false
     default: pr
   project:
@@ -38,8 +43,32 @@ inputs:
     description: Tags, comma or newline separated (any of).
     required: false
     default: ""
+  priority:
+    description: "Test priorities, comma or newline separated (any of): critical, high, medium, low."
+    required: false
+    default: ""
+  deployment:
+    description: "Record the gate outcome as a deploy event on the specs: <env>[@<sha>] (e.g. prod@abc123)."
+    required: false
+    default: ""
+  changed-since:
+    description: "Only tests touched by files changed since this commit (deploy and predeploy tests always run); needs fetch-depth 0."
+    required: false
+    default: ""
+  include-unapproved:
+    description: "Also run tests not approved under the spec-test approval policy (true/false)."
+    required: false
+    default: "false"
+  require-approved:
+    description: "Run only approved tests, even without a spec-test approval policy (true/false)."
+    required: false
+    default: "false"
+  unimplemented:
+    description: "Tests with a written condition but no bound code: skip, warn (list them in the summary) or fail (fail the step)."
+    required: false
+    default: warn
   fail-on:
-    description: "Fail the step when a test of this gate fails: deploy, pr or any (default: from gate)."
+    description: "Fail the step when a test of this run context fails: deploy, pr, predeploy, nightly, manual or any (default: from gate)."
     required: false
     default: ""
   parallel:
@@ -71,9 +100,21 @@ inputs:
     required: false
     default: ""
   cli-version:
-    description: zagents CLI version to install (default latest).
+    description: zagents CLI version to install (default latest); pin it (e.g. 0.7.3-mz.1) for reproducible gates.
     required: false
     default: ""
+  report-status:
+    description: "Post a commit status `zagents/spec-kit (<gate>)` on the head commit (true/false); needs `permissions: statuses: write`."
+    required: false
+    default: "false"
+  baseline:
+    description: "Compare with the default branch and list new failures in the summary and the new_failures output (true/false)."
+    required: false
+    default: "true"
+  quiet:
+    description: "Hide the test runners' own output in the log (true/false); failure tails stay."
+    required: false
+    default: "false"
   args:
     description: "Extra flags for `zagents spec test run`, shell-quoted (e.g. --include-unapproved --tag 'smoke test'); one flag per line also works."
     required: false
@@ -95,6 +136,21 @@ outputs:
   junit-dir:
     description: Directory with the JUnit files of the run.
     value: ${{ steps.run.outputs.junit-dir }}
+  new_failures:
+    description: Number of tests red here and green on the default branch.
+    value: ${{ steps.run.outputs.new_failures }}
+  new-failures-refs:
+    description: Space-separated refs of the new failures.
+    value: ${{ steps.run.outputs.new-failures-refs }}
+  unimplemented:
+    description: Number of selected tests whose condition is written but no code is bound.
+    value: ${{ steps.run.outputs.unimplemented }}
+  run_url:
+    description: Link to this CI run (the runs in ZAgents carry it as their CI link).
+    value: ${{ steps.run.outputs.run_url }}
+  invocation-id:
+    description: Id that groups every run of this step in the ZAgents run log.
+    value: ${{ steps.run.outputs.invocation-id }}
 
 runs:
   using: composite
@@ -113,13 +169,28 @@ runs:
         IN_SPEC: ${{ inputs.spec }}
         IN_ISSUE: ${{ inputs.issue }}
         IN_TAGS: ${{ inputs.tags }}
+        IN_PRIORITY: ${{ inputs.priority }}
+        IN_DEPLOYMENT: ${{ inputs.deployment }}
+        IN_CHANGED_SINCE: ${{ inputs.changed-since }}
+        IN_INCLUDE_UNAPPROVED: ${{ inputs.include-unapproved }}
+        IN_REQUIRE_APPROVED: ${{ inputs.require-approved }}
+        IN_UNIMPLEMENTED: ${{ inputs.unimplemented }}
         IN_FAIL_ON: ${{ inputs.fail-on }}
         IN_PARALLEL: ${{ inputs.parallel }}
         IN_JUNIT_DIR: ${{ inputs.junit-dir }}
         IN_UPLOAD: ${{ inputs.upload-junit }}
         IN_ARGS: ${{ inputs.args }}
+        IN_REPORT_STATUS: ${{ inputs.report-status }}
+        IN_BASELINE: ${{ inputs.baseline }}
+        IN_QUIET: ${{ inputs.quiet }}
+        # Only read by --report-status; never sent to ZAgents.
+        GITHUB_TOKEN: ${{ inputs.report-status == 'true' && github.token || '' }}
       run: |
         set -uo pipefail
+        # Inputs added after v1 shipped default to empty (callers of the bare step).
+        IN_PRIORITY="${IN_PRIORITY:-}" IN_DEPLOYMENT="${IN_DEPLOYMENT:-}" IN_CHANGED_SINCE="${IN_CHANGED_SINCE:-}"
+        IN_INCLUDE_UNAPPROVED="${IN_INCLUDE_UNAPPROVED:-}" IN_REQUIRE_APPROVED="${IN_REQUIRE_APPROVED:-}" IN_UNIMPLEMENTED="${IN_UNIMPLEMENTED:-}"
+        IN_REPORT_STATUS="${IN_REPORT_STATUS:-}" IN_BASELINE="${IN_BASELINE:-true}" IN_QUIET="${IN_QUIET:-}"
         script="$GITHUB_ACTION_PATH/spec-kit-test.sh"
         [ -f "$script" ] || script="$GITHUB_ACTION_PATH/../../../scripts/spec-kit-test.sh"
         args=(--gate "$IN_GATE" --parallel "$IN_PARALLEL" --output json)
@@ -128,6 +199,18 @@ runs:
         [ -n "$IN_SPEC" ] && args+=(--spec "$IN_SPEC")
         [ -n "$IN_ISSUE" ] && args+=(--issue "$IN_ISSUE")
         [ -n "$IN_FAIL_ON" ] && args+=(--fail-on "$IN_FAIL_ON")
+        [ -n "$IN_DEPLOYMENT" ] && args+=(--deployment "$IN_DEPLOYMENT")
+        [ -n "$IN_CHANGED_SINCE" ] && args+=(--changed-since "$IN_CHANGED_SINCE")
+        [ "$IN_INCLUDE_UNAPPROVED" = "true" ] && args+=(--include-unapproved)
+        [ "$IN_REQUIRE_APPROVED" = "true" ] && args+=(--require-approved)
+        # New flags only when asked: a pinned older cli-version keeps working.
+        [ "$IN_REPORT_STATUS" = "true" ] && args+=(--report-status)
+        [ "$IN_QUIET" = "true" ] && args+=(--quiet)
+        # warn is the CLI default: pass it only when changed so a pinned
+        # older cli-version without the flag keeps working.
+        if [ -n "$IN_UNIMPLEMENTED" ] && [ "$IN_UNIMPLEMENTED" != "warn" ]; then
+          args+=(--unimplemented "$IN_UNIMPLEMENTED")
+        fi
         junit_dir="$IN_JUNIT_DIR"
         if [ -z "$junit_dir" ] && [ "$IN_UPLOAD" = "true" ]; then
           junit_dir="$RUNNER_TEMP/zagents-spec-tests-junit"
@@ -139,6 +222,11 @@ runs:
           tag="${tag%"${tag##*[![:space:]]}"}"
           [ -n "$tag" ] && args+=(--tag "$tag")
         done < <(printf '%s\n' "$IN_TAGS" | tr ',' '\n')
+        while IFS= read -r prio; do
+          prio="${prio#"${prio%%[![:space:]]*}"}"
+          prio="${prio%"${prio##*[![:space:]]}"}"
+          [ -n "$prio" ] && args+=(--priority "$prio")
+        done < <(printf '%s\n' "$IN_PRIORITY" | tr ',' '\n')
         # Extra args: shell-style quoting ('a b', "a b", a\ b) without eval;
         # an unbalanced quote fails the step instead of splitting silently.
         if [ -n "$IN_ARGS" ]; then
@@ -156,11 +244,26 @@ runs:
         bash "$script" "${args[@]}" > "$result" || code=$?
         passed=0
         failed=0
+        new_failures=0
+        new_refs=""
+        unimplemented=0
+        invocation=""
+        run_url="${GITHUB_SERVER_URL:-https://github.com}/${GITHUB_REPOSITORY:-}/actions/runs/${GITHUB_RUN_ID:-}"
+        has_json=false
         if command -v jq >/dev/null 2>&1 && jq -e . "$result" >/dev/null 2>&1; then
+          has_json=true
           passed=$(jq '[(.results // [])[] | select(.status == "pass")] | length' "$result")
           failed=$(jq '[(.results // [])[] | select(.status == "fail")] | length' "$result")
-          # Annotate every failed test (path + reason) on the run page.
-          jq -r '(.results // [])[] | select(.status == "fail") | "::error file=\(.path // "")::\(.ref) (\(.source)): \((.actual // "failed") | split("\n")[0])"' "$result" || true
+          unimplemented=$(jq '(.unimplemented // []) | length' "$result")
+          if [ "$IN_BASELINE" = "true" ]; then
+            new_failures=$(jq '[(.results // [])[] | select(.new_failure == true)] | length' "$result")
+            new_refs=$(jq -r '[(.results // [])[] | select(.new_failure == true) | .ref] | join(" ")' "$result")
+          fi
+          invocation=$(jq -r '.context.invocation_id // ""' "$result")
+          # CLI schema 2+ annotates failures itself (file:line); older CLIs: here.
+          if [ "$(jq '.schema_version // 1' "$result")" -lt 2 ]; then
+            jq -r '(.results // [])[] | select(.status == "fail") | "::error file=\(.path // "")::\(.ref) (\(.source)): \((.actual // "failed") | split("\n")[0])"' "$result" || true
+          fi
         fi
         {
           echo "exit-code=$code"
@@ -168,24 +271,47 @@ runs:
           echo "passed=$passed"
           echo "failed=$failed"
           echo "junit-dir=$junit_dir"
+          echo "new_failures=$new_failures"
+          echo "new-failures-refs=$new_refs"
+          echo "unimplemented=$unimplemented"
+          echo "run_url=$run_url"
+          echo "invocation-id=$invocation"
         } >> "$GITHUB_OUTPUT"
         {
           echo "### ZAgents spec tests (gate: ${IN_GATE})"
           echo
-          if command -v jq >/dev/null 2>&1 && jq -e . "$result" >/dev/null 2>&1; then
+          if [ "$has_json" = true ]; then
             jq -r '
-              "| Test | Status | Duration | Gate | Path |",
-              "|---|---|---|---|---|",
-              ((.results // [])[] | "| \(.ref) | \(if .status == "fail" then "❌ fail" elif .status == "pass" then "✅ pass" else "➖ none" end) | \(if .duration_ms then "\(.duration_ms)ms" else "-" end) | \(.gate // "-") | `\(.path // "-")` |"),
+              (.context // {}) as $c |
+              if ($c | length) > 0 then
+                "**\($c.repo_url // "" | sub("^https://"; ""))** · \(if $c.pr_number then "PR #\($c.pr_number) (`\($c.branch // "")` → `\($c.base_branch // "")`)" elif $c.branch then "branch `\($c.branch)`\(if $c.is_default_branch == true then " (default)" else "" end)" else "" end) · commit `\(($c.head_sha // "")[0:7])` · \($c.event // "")",
+                "",
+                (if $c.pr_number or $c.is_default_branch == false then "> Branch run: results are stored for this branch and do not change the default-branch state of the tests." else "> Default branch: results update the state of the tests." end),
+                ""
+              else empty end,
+              "| Test | Status | Duration | Gate | Source | Path |",
+              "|---|---|---|---|---|---|",
+              ((.results // [])[] | "| \(.ref)\(if .title then " — \(.title)" else "" end) | \(if .status == "fail" then (if .new_failure == true then "❌ fail **(new)**" else "❌ fail" end) elif .status == "pass" then "✅ pass" else "➖ none" end) | \(if .duration_ms then "\(.duration_ms)ms" else "-" end) | \(.gate // "-") | \(.source // "-") | `\(.path // "-")` |"),
               "",
-              "\((.results // []) | map(select(.status == "pass")) | length) passed, \((.results // []) | map(select(.status == "fail")) | length) failed, \((.unmatched // []) | length) without a run command."' "$result"
+              "\((.results // []) | map(select(.status == "pass")) | length) passed, \((.results // []) | map(select(.status == "fail")) | length) failed, \((.results // []) | map(select(.new_failure == true)) | length) new vs default branch, \((.unmatched // []) | length) without a run command, \((.unimplemented // []) | length) not implemented."' "$result"
+            # Tests whose condition is written but whose code is not bound yet, by name.
+            if [ "$IN_UNIMPLEMENTED" != "skip" ] && [ "$(jq '(.unimplemented // []) | length' "$result")" != 0 ]; then
+              echo
+              echo "#### Not implemented (condition written, no test code bound yet)"
+              echo
+              jq -r '(.unimplemented // [])[] | "- `\(.ref)` \(.title // "") (gate \(.gate // "-"))"' "$result"
+            fi
           else
             echo '```'
             cat "$result"
             echo '```'
           fi
           echo
-          echo "Exit code: \`$code\`"
+          echo "Exit code: \`$code\` (0 green · 1 gated failure · 2 usage/config/server · 3 nothing to run · 10 Spec Kit off) · [CI run]($run_url)"
+          if [ -n "$invocation" ]; then
+            echo
+            echo "In ZAgents: Spec Kit → test runs, invocation \`$invocation\` (\`zagents spec runs --project <p> --since 1d\`)."
+          fi
         } >> "$GITHUB_STEP_SUMMARY"
         cat "$result"
         exit "$code"

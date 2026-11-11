@@ -2,15 +2,16 @@
 # mz: spec-kit — run ZAgents Executable Spec Kit tests in any CI (GitHub
 # Actions, GitLab CI, Jenkins, plain bash) and report results to ZAgents.
 #
-#   curl -fsSL https://raw.githubusercontent.com/ZurabDev/zagents-releases/main/scripts/spec-kit-test.sh \
+#   curl -fsSL https://raw.githubusercontent.com/cnt-ai-corp/zagents-releases/main/scripts/spec-kit-test.sh \
 #     | bash -s -- --gate deploy --project "Pricing 2.0"
 #
 # Every argument is passed to `zagents spec test run` (see `--help`).
-# The script exits with the CLI's exit code (0 ok, 1 gated failure,
-# 2 usage/config, 3 nothing to run with --require-tests, 10 Spec Kit off).
+# The script exits with the CLI's exit code (0 ok, 1 gated failure or a not
+# implemented test with --unimplemented fail, 2 usage/config, 3 nothing to
+# run with --require-tests, 10 Spec Kit off).
 set -euo pipefail
 
-RELEASES_URL="${ZAGENTS_RELEASES_URL:-https://github.com/ZurabDev/zagents-releases}"
+RELEASES_URL="${ZAGENTS_RELEASES_URL:-https://github.com/cnt-ai-corp/zagents-releases}"
 
 usage() {
   cat <<'EOF'
@@ -31,15 +32,24 @@ Environment:
 
 Common flags (all flags: zagents spec test run --help):
   --project <p> --component <d.c> --spec <SPEC-n> --issue <KEY>
-  --gate deploy|pr|nightly|manual|all   --tag <t> (repeat)
-  --parallel N  --junit-dir DIR  --fail-on deploy|pr|any  --dry-run
+  --gate pr|deploy|predeploy|nightly|manual|all   --tag <t> (repeat)
+  --priority <p> (repeat)  --deployment <env>[@<sha>]  --changed-since <sha>
+  --include-unapproved  --require-approved  --unimplemented skip|warn|fail
+  --parallel N  --junit-dir DIR  --fail-on deploy|pr|predeploy|nightly|manual|any  --dry-run
+  --quiet  --verbose  --log-file F  --output json  --report-status (GitHub)
+
+Branches: the CLI detects repository, branch, PR, event and CI provenance
+from GitHub Actions, GitLab CI, Jenkins or Buildkite (else the checkout);
+override with --branch --pr --base-branch --default-branch --event. Only
+runs on the default branch change the state of the tests; PR and branch
+runs are stored per branch and compared with it (new failures).
 
 Examples:
   # Deploy gate in GitLab CI / Jenkins
   ZAGENTS_TOKEN=$TOKEN bash spec-kit-test.sh --gate deploy --project "Pricing 2.0"
 
   # Straight from the public releases repo
-  curl -fsSL https://raw.githubusercontent.com/ZurabDev/zagents-releases/main/scripts/spec-kit-test.sh \
+  curl -fsSL https://raw.githubusercontent.com/cnt-ai-corp/zagents-releases/main/scripts/spec-kit-test.sh \
     | bash -s -- --gate pr --project "Pricing 2.0"
 EOF
 }

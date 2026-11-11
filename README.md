@@ -18,19 +18,19 @@ anonymous access).
 **Homebrew (macOS/Linux, recommended):**
 
 ```bash
-brew install ZurabDev/zagents/zagents
+brew install cnt-ai-corp/zagents/zagents
 ```
 
 **curl (macOS/Linux):**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/ZurabDev/zagents-releases/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/cnt-ai-corp/zagents-releases/main/install.sh | bash
 ```
 
 **PowerShell (Windows):**
 
 ```powershell
-irm https://raw.githubusercontent.com/ZurabDev/zagents-releases/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/cnt-ai-corp/zagents-releases/main/install.ps1 | iex
 ```
 
 After installing, run `zagents setup` to connect to ZAgents Cloud.
@@ -38,7 +38,7 @@ After installing, run `zagents setup` to connect to ZAgents Cloud.
 ## Desktop app
 
 Grab the latest installer for your platform from the
-[latest release](https://github.com/ZurabDev/zagents-releases/releases/latest)
+[latest release](https://github.com/cnt-ai-corp/zagents-releases/releases/latest)
 (macOS and Linux; Windows builds are temporarily unavailable).
 
 > **Upgrading an older Desktop install?** If you installed ZAgents Desktop
@@ -50,7 +50,7 @@ Grab the latest installer for your platform from the
 ## All releases
 
 CLI archives, Desktop installers, and `checksums.txt` for every release are
-published here: https://github.com/ZurabDev/zagents-releases/releases
+published here: https://github.com/cnt-ai-corp/zagents-releases/releases
 
 ## Issues
 

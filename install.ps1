@@ -1,10 +1,10 @@
 # ZAgents installer for Windows — one command to get started. # mz: zagents-rebrand
 #
 # Install CLI (default): connects to zagents.cnt.me  # mz: zagents-rebrand
-#   irm https://raw.githubusercontent.com/ZurabDev/zagents-releases/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/cnt-ai-corp/zagents-releases/main/install.ps1 | iex
 #
 # Self-host: starts a local ZAgents server + installs CLI + configures
-#   $env:ZAGENTS_MODE="local"; irm https://raw.githubusercontent.com/ZurabDev/zagents-releases/main/install.ps1 | iex
+#   $env:ZAGENTS_MODE="local"; irm https://raw.githubusercontent.com/cnt-ai-corp/zagents-releases/main/install.ps1 | iex
 #
 
 $ErrorActionPreference = "Stop"
@@ -13,12 +13,12 @@ $ErrorActionPreference = "Stop"
 # Configuration
 # ---------------------------------------------------------------------------
 # mz: public-releases — source clone stays on the private fork repo
-# (ZurabDev/multica); source code is never mirrored publicly.
-$RepoUrl       = "https://github.com/ZurabDev/multica.git"
+# (cnt-ai-corp/multica); source code is never mirrored publicly.
+$RepoUrl       = "https://github.com/cnt-ai-corp/multica.git"
 # mz: public-releases — release assets (CLI archives, checksums,
-# `releases/latest`) live in the public ZurabDev/zagents-releases mirror;
-# ZurabDev/multica is private and 404s for anonymous consumers.
-$RepoWebUrl    = "https://github.com/ZurabDev/zagents-releases"
+# `releases/latest`) live in the public cnt-ai-corp/zagents-releases mirror;
+# cnt-ai-corp/multica is private and 404s for anonymous consumers.
+$RepoWebUrl    = "https://github.com/cnt-ai-corp/zagents-releases"
 $DefaultInstallDir = Join-Path $env:USERPROFILE ".zagents\server"
 $InstallDir    = if ($env:ZAGENTS_INSTALL_DIR) { $env:ZAGENTS_INSTALL_DIR } else { $DefaultInstallDir }
 
@@ -92,8 +92,8 @@ function Get-ComposePublishedPort {
 function Get-LatestVersion {
     try {
         # mz: public-releases — release metadata lives in the public
-        # ZurabDev/zagents-releases mirror, not the private source repo.
-        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/ZurabDev/zagents-releases/releases/latest" -ErrorAction Stop
+        # cnt-ai-corp/zagents-releases mirror, not the private source repo.
+        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/cnt-ai-corp/zagents-releases/releases/latest" -ErrorAction Stop
         return $release.tag_name
     } catch {
         return $null
@@ -258,9 +258,9 @@ function Install-CliBinary {
     # old `multica-cli-*` name as a fallback for pre-rename releases.
     $releaseAsset = "zagents-cli-$version-windows-$arch.zip"
     $legacyReleaseAsset = "multica-cli-$version-windows-$arch.zip"
-    # mz: public-releases — download from the public ZurabDev/zagents-releases mirror.
-    $url = "https://github.com/ZurabDev/zagents-releases/releases/download/$latest/$releaseAsset"
-    $legacyUrl = "https://github.com/ZurabDev/zagents-releases/releases/download/$latest/$legacyReleaseAsset"
+    # mz: public-releases — download from the public cnt-ai-corp/zagents-releases mirror.
+    $url = "https://github.com/cnt-ai-corp/zagents-releases/releases/download/$latest/$releaseAsset"
+    $legacyUrl = "https://github.com/cnt-ai-corp/zagents-releases/releases/download/$latest/$legacyReleaseAsset"
     $tmpDir = Join-Path ([System.IO.Path]::GetTempPath()) "zagents-install"
 
     if (Test-Path $tmpDir) { Remove-Item $tmpDir -Recurse -Force }
@@ -282,7 +282,7 @@ function Install-CliBinary {
 
     # Verify SHA256 checksum
     # mz: public-releases — checksums.txt is published to the public mirror alongside the archives.
-    $checksumUrl = "https://github.com/ZurabDev/zagents-releases/releases/download/$latest/checksums.txt"
+    $checksumUrl = "https://github.com/cnt-ai-corp/zagents-releases/releases/download/$latest/checksums.txt"
     try {
         $checksums = Invoke-WebRequest -Uri $checksumUrl -UseBasicParsing -ErrorAction Stop
         $checksumContent = if ($checksums.Content -is [byte[]]) {
@@ -519,7 +519,7 @@ function Start-DefaultInstall {
     Write-Host "     zagents setup self-host      " -NoNewline; Write-Host "# Connect to a self-hosted server" -ForegroundColor DarkGray
     Write-Host ""
     Write-Host "  Self-hosting? Install the server first:"
-    Write-Host '     $env:ZAGENTS_MODE="with-server"; irm https://raw.githubusercontent.com/ZurabDev/zagents-releases/main/install.ps1 | iex'
+    Write-Host '     $env:ZAGENTS_MODE="with-server"; irm https://raw.githubusercontent.com/cnt-ai-corp/zagents-releases/main/install.ps1 | iex'
     Write-Host ""
 }
 
@@ -553,7 +553,7 @@ function Start-LocalInstall {
     Write-Host "  or read the generated code from backend logs when Resend is unset."
     Write-Host ""
     Write-Host "  To stop all services:"
-    Write-Host '     $env:ZAGENTS_MODE="stop"; irm https://raw.githubusercontent.com/ZurabDev/zagents-releases/main/install.ps1 | iex'
+    Write-Host '     $env:ZAGENTS_MODE="stop"; irm https://raw.githubusercontent.com/cnt-ai-corp/zagents-releases/main/install.ps1 | iex'
     Write-Host ""
 }
 
